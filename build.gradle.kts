@@ -15,9 +15,6 @@ repositories {
 
 dependencies {
     shade(implementation("dev.deftu:ezrique-core:${libs.versions.ezrique.core.get()}")!!)
-
-    shade(implementation("io.ktor:ktor-server-core:${libs.versions.ktor.get()}")!!)
-    shade(implementation("io.ktor:ktor-server-netty:${libs.versions.ktor.get()}")!!)
 }
 
 tasks {
