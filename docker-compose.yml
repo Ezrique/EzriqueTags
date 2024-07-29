@@ -1,0 +1,6 @@
+services:
+  ezrique-voice:
+    container_name: ezrique-tags
+    build: .
+    volumes:
+      - ./config.json:/app/config.json
