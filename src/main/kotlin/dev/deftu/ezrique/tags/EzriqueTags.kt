@@ -14,6 +14,7 @@ import dev.kord.core.event.gateway.ResumedEvent
 import dev.kord.core.event.interaction.AutoCompleteInteractionCreateEvent
 import dev.kord.core.event.interaction.ChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.GuildAutoCompleteInteractionCreateEvent
+import dev.kord.core.event.interaction.ModalSubmitInteractionCreateEvent
 import dev.kord.core.on
 import dev.kord.gateway.Intents
 import dev.kord.gateway.NON_PRIVILEGED
@@ -264,6 +265,16 @@ object EzriqueTags {
                 val (rootName, subCommandName, _) = interaction.command.names
 
                 CommandHandler.handleAutoComplete(this, guild, rootName, subCommandName)
+            } catch (e: Exception) {
+                handleError(e, TagsErrorCode.UNKNOWN_COMMAND)
+            }
+        }
+
+        kord.on<ModalSubmitInteractionCreateEvent> {
+            try {
+                val guild = maybeGetGuild()
+
+                ModalHandler.handle(this, guild)
             } catch (e: Exception) {
                 handleError(e, TagsErrorCode.UNKNOWN_COMMAND)
             }

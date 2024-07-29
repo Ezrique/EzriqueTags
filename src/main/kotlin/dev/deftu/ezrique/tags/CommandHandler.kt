@@ -1,14 +1,14 @@
 package dev.deftu.ezrique.tags
 
-import dev.deftu.ezrique.EmbedState
-import dev.deftu.ezrique.checkPermission
-import dev.deftu.ezrique.rawValue
-import dev.deftu.ezrique.stateEmbed
+import dev.deftu.ezrique.*
 import dev.deftu.ezrique.tags.sql.TagEntity
+import dev.deftu.ezrique.tags.utils.transformTagNameForCommandName
+import dev.deftu.ezrique.tags.utils.getTagNameFromCommandName
 import dev.kord.common.entity.Permission
 import dev.kord.common.entity.Snowflake
+import dev.kord.common.entity.TextInputStyle
 import dev.kord.core.Kord
-import dev.kord.core.behavior.interaction.response.DeferredPublicMessageInteractionResponseBehavior
+import dev.kord.core.behavior.interaction.modal
 import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.behavior.interaction.suggestString
 import dev.kord.core.entity.Guild
@@ -25,13 +25,12 @@ object CommandHandler {
             defaultMemberPermissions = null
             dmPermission = false
 
-            subCommand("create", "Create a tag.") {
+            subCommand("create", "Create a tag.")
+
+            subCommand("edit", "Edit a tag.") {
                 string("name", "The name of the tag.") {
                     required = true
-                }
-
-                string("content", "The content of the tag.") {
-                    required = true
+                    autocomplete = true
                 }
             }
 
@@ -39,17 +38,6 @@ object CommandHandler {
                 string("name", "The name of the tag.") {
                     required = true
                     autocomplete = true
-                }
-            }
-
-            subCommand("edit", "Edit a tag.") {
-                string("name", "The name of the tag.") {
-                    required = true
-                    autocomplete = true
-                }
-
-                string("content", "The new content of the tag.") {
-                    required = true
                 }
             }
 
@@ -89,7 +77,7 @@ object CommandHandler {
             entity.guildId
         }) {
             for (guildTag in guildTags) {
-                kord.createGuildChatInputCommand(Snowflake(guildId), guildTag.name.transformForCommandName(), "Triggers the ${guildTag.name} tag.")
+                kord.createGuildChatInputCommand(Snowflake(guildId), guildTag.name.transformTagNameForCommandName(), "Triggers the ${guildTag.name} tag.")
             }
         }
     }
@@ -125,68 +113,51 @@ object CommandHandler {
         if (guild == null) return
 
         val member = event.interaction.user.asMember(guild.id)
-        val response = event.interaction.deferPublicResponse()
-
-        // Check if the member has the required permissions. Only check on all subcommands except for "trigger"
-        if (subCommandName != "trigger" && !member.checkPermission(Permission.ManageGuild, response)) return
+        if (subCommandName != "trigger" && !member.checkPermissionDeferred(Permission.ManageGuild) { event.interaction.deferPublicResponse() }) return
 
         when (subCommandName) {
-            "create" -> handleBaseCreate(event, guild, response)
-            "delete" -> handleBaseDelete(event, guild, response)
-            "edit" -> handleBaseEdit(event, guild, response)
-            "info" -> handleBaseInfo(event, guild, response)
-            "list" -> handleBaseList(guild, response)
-            "trigger" -> handleBaseTrigger(event, guild, response)
-            "transfer" -> handleBaseTransfer(event, guild, response)
+            "create" -> handleBaseCreate(event)
+            "edit" -> handleBaseEdit(event)
+            "delete" -> handleBaseDelete(event, guild)
+            "info" -> handleBaseInfo(event, guild)
+            "list" -> handleBaseList(event, guild)
+            "trigger" -> handleBaseTrigger(event, guild)
+            "transfer" -> handleBaseTransfer(event, guild)
         }
     }
 
-    private suspend fun handleBaseCreate(
-        event: ChatInputCommandInteractionCreateEvent,
-        guild: Guild,
-        response: DeferredPublicMessageInteractionResponseBehavior
-    ) {
-        val name = event.interaction.command.options["name"]?.value?.toString() ?: return
-        if (name == "tag") {
-            response.respond {
-                stateEmbed(EmbedState.ERROR) {
-                    description = "You can't create a tag with the name `tag`."
+    private suspend fun handleBaseCreate(event: ChatInputCommandInteractionCreateEvent) {
+        event.interaction.modal("Tag Creation", "tag-creator") {
+            actionRow {
+                textInput(TextInputStyle.Short, "name", "Name") {
+                    required = true
                 }
             }
 
-            return
-        }
-
-        if (TagEntity.exists(guild.id.rawValue, name)) {
-            response.respond {
-                stateEmbed(EmbedState.ERROR) {
-                    description = "A tag with the name `$name` already exists."
+            actionRow {
+                textInput(TextInputStyle.Paragraph, "content", "Content") {
+                    required = true
                 }
-            }
-
-            return
-        }
-
-        val content = event.interaction.command.options["content"]?.value?.toString() ?: return
-
-        TagEntity.create(guild.id.rawValue, name, content)
-
-        // Create the tag's slash command
-        event.kord.createGuildChatInputCommand(guild.id, name.transformForCommandName(), "Triggers the $name tag.")
-
-        response.respond {
-            stateEmbed(EmbedState.SUCCESS) {
-                description = "The tag `$name` has been created."
             }
         }
     }
 
-    private suspend fun handleBaseDelete(
-        event: ChatInputCommandInteractionCreateEvent,
-        guild: Guild,
-        response: DeferredPublicMessageInteractionResponseBehavior
-    ) {
+    private suspend fun handleBaseEdit(event: ChatInputCommandInteractionCreateEvent) {
         val name = event.interaction.command.options["name"]?.value?.toString() ?: return
+        event.interaction.modal("Tag Editing", "tag-editor_$name") {
+            actionRow {
+                textInput(TextInputStyle.Paragraph, "content", "Content") {
+                    required = true
+                }
+            }
+        }
+    }
+
+    private suspend fun handleBaseDelete(event: ChatInputCommandInteractionCreateEvent, guild: Guild) {
+        val name = event.interaction.command.options["name"]?.value?.toString()?.getTagNameFromCommandName() ?: return
+
+        val response = event.interaction.deferEphemeralResponse()
+
         if (!TagEntity.exists(guild.id.rawValue, name)) {
             response.respond {
                 stateEmbed(EmbedState.ERROR) {
@@ -206,40 +177,11 @@ object CommandHandler {
         }
     }
 
-    private suspend fun handleBaseEdit(
-        event: ChatInputCommandInteractionCreateEvent,
-        guild: Guild,
-        response: DeferredPublicMessageInteractionResponseBehavior
-    ) {
-        val name = event.interaction.command.options["name"]?.value?.toString() ?: return
-        if (!TagEntity.exists(guild.id.rawValue, name)) {
-            response.respond {
-                stateEmbed(EmbedState.ERROR) {
-                    description = "A tag with the name `$name` doesn't exist."
-                }
-            }
-
-            return
-        }
-
-        val content = event.interaction.command.options["content"]?.value?.toString() ?: return
-
-        TagEntity.edit(guild.id.rawValue, name, content)
-
-        response.respond {
-            stateEmbed(EmbedState.SUCCESS) {
-                description = "The tag `$name` has been edited."
-            }
-        }
-    }
-
-    private suspend fun handleBaseInfo(
-        event: ChatInputCommandInteractionCreateEvent,
-        guild: Guild,
-        response: DeferredPublicMessageInteractionResponseBehavior
-    ) {
-        val name = event.interaction.command.options["name"]?.value?.toString() ?: return
+    private suspend fun handleBaseInfo(event: ChatInputCommandInteractionCreateEvent, guild: Guild) {
+        val name = event.interaction.command.options["name"]?.value?.toString()?.getTagNameFromCommandName() ?: return
         val tag = TagEntity.get(guild.id.rawValue, name) ?: return
+
+        val response = event.interaction.deferEphemeralResponse()
 
         response.respond {
             stateEmbed(EmbedState.SUCCESS) {
@@ -250,10 +192,8 @@ object CommandHandler {
         }
     }
 
-    private suspend fun handleBaseList(
-        guild: Guild,
-        response: DeferredPublicMessageInteractionResponseBehavior
-    ) {
+    private suspend fun handleBaseList(event: ChatInputCommandInteractionCreateEvent, guild: Guild) {
+        val response = event.interaction.deferEphemeralResponse()
         val tags = TagEntity.list(guild.id.rawValue)
 
         response.respond {
@@ -266,25 +206,22 @@ object CommandHandler {
         }
     }
 
-    private suspend fun handleBaseTrigger(
-        event: ChatInputCommandInteractionCreateEvent,
-        guild: Guild,
-        response: DeferredPublicMessageInteractionResponseBehavior
-    ) {
-        val name = event.interaction.command.options["name"]?.value?.toString() ?: return
+    private suspend fun handleBaseTrigger(event: ChatInputCommandInteractionCreateEvent, guild: Guild) {
+        val name = event.interaction.command.options["name"]?.value?.toString()?.getTagNameFromCommandName() ?: return
         val tag = TagEntity.get(guild.id.rawValue, name) ?: return
+
+        val response = event.interaction.deferPublicResponse()
 
         response.respond {
             content = tag.content
         }
     }
 
-    private suspend fun handleBaseTransfer(
-        event: ChatInputCommandInteractionCreateEvent,
-        guild: Guild,
-        response: DeferredPublicMessageInteractionResponseBehavior
-    ) {
-        val name = event.interaction.command.options["name"]?.value?.toString() ?: return
+    private suspend fun handleBaseTransfer(event: ChatInputCommandInteractionCreateEvent, guild: Guild) {
+        val name = event.interaction.command.options["name"]?.value?.toString()?.getTagNameFromCommandName() ?: return
+
+        val response = event.interaction.deferEphemeralResponse()
+
         if (!TagEntity.exists(guild.id.rawValue, name)) {
             response.respond {
                 stateEmbed(EmbedState.ERROR) {
@@ -318,12 +255,12 @@ object CommandHandler {
         }
 
         val targetGuildMember = event.interaction.user.asMember(targetGuild.id)
-        if (!targetGuildMember.checkPermission(Permission.ManageGuild, response)) return
+        if (!targetGuildMember.checkPermissionDeferred(Permission.ManageGuild, response)) return
 
         TagEntity.transfer(guild.id.rawValue, name, targetGuild.id.rawValue)
 
         // Create the tag's slash command in the target guild
-        event.kord.createGuildChatInputCommand(targetGuild.id, name.transformForCommandName(), "Triggers the $name tag.")
+        event.kord.createGuildChatInputCommand(targetGuild.id, name.transformTagNameForCommandName(), "Triggers the $name tag.")
 
         response.respond {
             stateEmbed(EmbedState.SUCCESS) {
@@ -332,37 +269,31 @@ object CommandHandler {
         }
     }
 
-    private suspend fun handleBaseAutoComplete(
-        event: AutoCompleteInteractionCreateEvent,
-        guild: Guild?,
-        subCommandName: String?
-    ) {
+    private suspend fun handleBaseAutoComplete(event: AutoCompleteInteractionCreateEvent, guild: Guild?, subCommandName: String?) {
         if (guild == null) return
 
         when (subCommandName) {
-            "delete", "edit", "info", "trigger" -> {
+            "edit", "delete", "info", "trigger" -> {
                 val name = event.interaction.command.options["name"]?.value?.toString() ?: return
                 val tags = TagEntity.list(guild.id.rawValue)
                 val matchingTags = tags.filter { tag -> tag.name.startsWith(name) }
 
                 event.interaction.suggestString {
                     for (matchingTag in matchingTags) {
-                        choice(matchingTag.name.transformForCommandName(), matchingTag.name)
+                        choice(matchingTag.name.transformTagNameForCommandName(), matchingTag.name)
                     }
                 }
             }
         }
     }
 
-    private suspend fun handleTagTrigger(
-        event: ChatInputCommandInteractionCreateEvent,
-        guild: Guild?,
-        commandName: String
-    ) {
+    private suspend fun handleTagTrigger(event: ChatInputCommandInteractionCreateEvent, guild: Guild?, commandName: String) {
         if (guild == null) return
 
+        val tagName = commandName.getTagNameFromCommandName()
+
         val response = event.interaction.deferPublicResponse()
-        if (!TagEntity.exists(guild.id.rawValue, commandName)) {
+        if (!TagEntity.exists(guild.id.rawValue, tagName)) {
             response.respond {
                 stateEmbed(EmbedState.ERROR) {
                     description = "A tag with the name `$commandName` doesn't exist."
@@ -372,15 +303,11 @@ object CommandHandler {
             return
         }
 
-        val tag = TagEntity.get(guild.id.rawValue, commandName) ?: return
+        val tag = TagEntity.get(guild.id.rawValue, tagName) ?: return
 
         response.respond {
             content = tag.content
         }
-    }
-
-    private fun String.transformForCommandName(): String {
-        return lowercase().replace(" ", "_")
     }
 
 }
