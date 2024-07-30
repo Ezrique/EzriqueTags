@@ -1,20 +1,18 @@
 package dev.deftu.ezrique.tags
 
 import dev.deftu.ezrique.*
+import dev.deftu.ezrique.tags.commands.CommandDelegator
 import dev.deftu.ezrique.tags.sql.TagTable
 import dev.deftu.ezrique.tags.utils.Healthchecks
 import dev.deftu.ezrique.tags.utils.scheduleAtFixedRate
 import dev.deftu.ezrique.tags.utils.isInDocker
 import dev.kord.common.entity.PresenceStatus
 import dev.kord.core.Kord
-import dev.kord.core.entity.interaction.GuildAutoCompleteInteraction
+import dev.kord.core.behavior.interaction.respondEphemeral
 import dev.kord.core.event.gateway.DisconnectEvent
 import dev.kord.core.event.gateway.ReadyEvent
 import dev.kord.core.event.gateway.ResumedEvent
-import dev.kord.core.event.interaction.AutoCompleteInteractionCreateEvent
-import dev.kord.core.event.interaction.ChatInputCommandInteractionCreateEvent
-import dev.kord.core.event.interaction.GuildAutoCompleteInteractionCreateEvent
-import dev.kord.core.event.interaction.ModalSubmitInteractionCreateEvent
+import dev.kord.core.event.interaction.*
 import dev.kord.core.on
 import dev.kord.gateway.Intents
 import dev.kord.gateway.NON_PRIVILEGED
@@ -71,30 +69,36 @@ object EzriqueTags {
 
     @JvmStatic
     fun main(args: Array<String>) = runBlocking {
-        LOGGER.info("Starting $NAME v$VERSION")
-
-        initializeSentry()
-        if (!initializeDatabase()) return@runBlocking
-        if (!initializeKord()) return@runBlocking
-
-        setupHealthchecks()
-        setupKordListeners()
-        setupInteractionListeners()
-
-        kord.createGlobalApplicationCommands {
-            CommandHandler.setupGlobalCommands(this)
-        }
-
-        CommandHandler.setupTagCommands(kord)
-
         try {
-            kord.login {
-                intents {
-                    +Intents.NON_PRIVILEGED
+            LOGGER.info("Starting $NAME v$VERSION")
+
+            initializeSentry()
+            if (!initializeDatabase()) return@runBlocking
+            if (!initializeKord()) return@runBlocking
+
+            setupHealthchecks()
+            setupKordListeners()
+            setupInteractionListeners()
+
+            kord.createGlobalApplicationCommands {
+                CommandDelegator.setupGlobalCommands(this)
+            }
+
+            CommandDelegator.setupGuildCommands(kord)
+
+            try {
+                kord.login {
+                    intents {
+                        +Intents.NON_PRIVILEGED
+                    }
                 }
+            } catch (t: Throwable) {
+                handleError(t, TagsErrorCode.KORD_LOGIN)
+                LOGGER.error("An error occurred while logging in", t)
             }
         } catch (t: Throwable) {
-            handleError(t, TagsErrorCode.KORD_LOGIN)
+            handleError(t, TagsErrorCode.UNKNOWN)
+            LOGGER.error("An unknown error occurred", t)
         }
     }
 
@@ -248,33 +252,38 @@ object EzriqueTags {
     }
 
     private fun setupInteractionListeners() {
-        kord.on<ChatInputCommandInteractionCreateEvent> {
-            try {
-                val guild = maybeGetGuild()
-                val (rootName, subCommandName, _) = interaction.command.names
+        /**
+         * Tells the user that the bot is only available in guilds
+         */
+        kord.on<GlobalChatInputCommandInteractionCreateEvent> {
+            interaction.respondEphemeral {
+                stateEmbed(EmbedState.ERROR) {
+                    description = "This bot is only available in guilds."
+                }
+            }
+        }
 
-                CommandHandler.handleAll(this, guild, rootName, subCommandName)
+        kord.on<GuildChatInputCommandInteractionCreateEvent> {
+            try {
+                val (rootName, subCommandName, _) = interaction.command.names
+                CommandDelegator.handleCommand(this, rootName, subCommandName)
             } catch (e: Exception) {
                 handleError(e, TagsErrorCode.UNKNOWN_COMMAND)
             }
         }
 
-        kord.on<AutoCompleteInteractionCreateEvent> {
+        kord.on<GuildAutoCompleteInteractionCreateEvent> {
             try {
-                val guild = (interaction as? GuildAutoCompleteInteraction)?.getGuildOrNull()
                 val (rootName, subCommandName, _) = interaction.command.names
-
-                CommandHandler.handleAutoComplete(this, guild, rootName, subCommandName)
+                CommandDelegator.handleAutoComplete(this, rootName, subCommandName)
             } catch (e: Exception) {
                 handleError(e, TagsErrorCode.UNKNOWN_COMMAND)
             }
         }
 
-        kord.on<ModalSubmitInteractionCreateEvent> {
+        kord.on<GuildModalSubmitInteractionCreateEvent> {
             try {
-                val guild = maybeGetGuild()
-
-                ModalHandler.handle(this, guild)
+                CommandDelegator.handleModal(this)
             } catch (e: Exception) {
                 handleError(e, TagsErrorCode.UNKNOWN_COMMAND)
             }
