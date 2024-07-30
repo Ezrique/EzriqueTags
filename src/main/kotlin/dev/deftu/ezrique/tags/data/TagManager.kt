@@ -12,15 +12,19 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 object TagManager {
 
     const val MAX_TAGS_PER_GUILD = 50
-    const val TAG_NAME_MIN_LENGTH = 1
-    const val TAG_NAME_MAX_LENGTH = 25
+
+    const val NAME_MAX_LENGTH = 25
+
+    const val DESCRIPTION_MAX_LENGTH = 200
+
+    const val CONTENT_MAX_LENGTH = 1500
 
     private val tagNameRegex = Regex(buildString {
         append("^")
         append("[a-z0-9-]{")
-        append(TAG_NAME_MIN_LENGTH)
+        append("1") // Min length = 1
         append(",")
-        append(TAG_NAME_MAX_LENGTH)
+        append(NAME_MAX_LENGTH)
         append("}")
         append("$")
     })

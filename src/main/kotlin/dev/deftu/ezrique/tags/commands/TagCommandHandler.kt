@@ -13,7 +13,6 @@ import dev.kord.common.entity.Snowflake
 import dev.kord.common.entity.TextInputStyle
 import dev.kord.core.behavior.interaction.modal
 import dev.kord.core.behavior.interaction.response.DeferredMessageInteractionResponseBehavior
-import dev.kord.core.behavior.interaction.response.InteractionResponseBehavior
 import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.behavior.interaction.suggestString
 import dev.kord.core.entity.Guild
@@ -24,6 +23,9 @@ import dev.kord.rest.builder.interaction.GlobalMultiApplicationCommandBuilder
 import dev.kord.rest.builder.interaction.boolean
 import dev.kord.rest.builder.interaction.string
 import dev.kord.rest.builder.interaction.subCommand
+import dev.kord.rest.builder.message.addFile
+import io.ktor.client.request.forms.*
+import io.ktor.utils.io.*
 import kotlinx.coroutines.flow.firstOrNull
 
 object TagCommandHandler {
@@ -186,18 +188,21 @@ object TagCommandHandler {
                         actionRow {
                             textInput(TextInputStyle.Short, "name", "Name") {
                                 required = true
+                                allowedLength = 1..TagManager.NAME_MAX_LENGTH
                             }
                         }
 
                         actionRow {
                             textInput(TextInputStyle.Short, "description", "Description") {
                                 required = false
+                                allowedLength = 0..TagManager.DESCRIPTION_MAX_LENGTH
                             }
                         }
 
                         actionRow {
                             textInput(TextInputStyle.Paragraph, "content", "Content") {
                                 required = true
+                                allowedLength = 0..TagManager.CONTENT_MAX_LENGTH
                             }
                         }
                     }
@@ -215,6 +220,7 @@ object TagCommandHandler {
                         actionRow {
                             textInput(TextInputStyle.Short, "description", "Description") {
                                 required = false
+                                allowedLength = 0..TagManager.DESCRIPTION_MAX_LENGTH
                                 value = tag.description
                             }
                         }
@@ -223,6 +229,7 @@ object TagCommandHandler {
                             textInput(TextInputStyle.Paragraph, "content", "Content") {
                                 required = false
                                 value = tag.content
+                                allowedLength = 0..TagManager.CONTENT_MAX_LENGTH
                             }
                         }
                     }
@@ -301,18 +308,41 @@ object TagCommandHandler {
                         array.add(TagManager.convertToJson(tag))
                     }
 
-                    response.respond {
-                        stateEmbed(EmbedState.SUCCESS) {
-                            title = "Tags Export"
-                            description = "Here is the JSON for all tags."
+                    val jsonString = array.toString()
+                    if (jsonString.length < 1500) {
+                        response.respond {
+                            stateEmbed(EmbedState.SUCCESS) {
+                                title = "Tags Export"
+                                description = "Here is the JSON for all tags."
 
-                            field("JSON") {
-                                buildString {
-                                    appendLine("```json")
-                                    appendLine(array.toString())
-                                    appendLine("```")
+                                field("JSON") {
+                                    buildString {
+                                        appendLine("```json")
+                                        appendLine(jsonString)
+                                        appendLine("```")
+                                    }
                                 }
                             }
+                        }
+
+                        return
+                    } else {
+                        // Send a file
+                        val bytes = jsonString.toByteArray(Charsets.UTF_8)
+                        response.respond {
+                            stateEmbed(EmbedState.SUCCESS) {
+                                title = "Tags Export"
+                                description = "Here is the JSON for all tags."
+
+                                field("JSON") {
+                                    "The JSON is too large to display here. Please download the file."
+                                }
+                            }
+
+                            addFile(
+                                "tags.json",
+                                ChannelProvider(bytes.size.toLong()) { ByteReadChannel(bytes) }
+                            )
                         }
                     }
                 } catch (t: Throwable) {
@@ -1165,7 +1195,7 @@ object TagCommandHandler {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Invalid tag name"
-                                description = "The tag name must be alphanumeric and have a length between ${TagManager.TAG_NAME_MIN_LENGTH} and ${TagManager.TAG_NAME_MAX_LENGTH} characters."
+                                description = "The tag name must be alphanumeric and have a length between 1 and ${TagManager.NAME_MAX_LENGTH} characters."
                             }
                         }
 
@@ -1175,11 +1205,79 @@ object TagCommandHandler {
                     val tagName = TagManager.ensureName(rawTagName)
                     val tagDescription = event.interaction.textInputs["description"]?.value
                     val tagContent = event.interaction.textInputs["content"]?.value
+                    if (tagName.length > TagManager.NAME_MAX_LENGTH) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid tag name"
+                                description = "The tag name must have a length between 1 and ${TagManager.NAME_MAX_LENGTH} characters."
+
+                                field("Still want to create your tag?") {
+                                    buildString {
+                                        appendLine("**Description:** $tagDescription")
+                                        appendLine()
+                                        appendLine("**Content:**")
+                                        appendLine("```")
+                                        appendLine(tagContent)
+                                        appendLine("```")
+                                    }
+                                }
+                            }
+                        }
+
+                        return
+                    }
+
+                    if (tagDescription != null && tagDescription.length > TagManager.DESCRIPTION_MAX_LENGTH) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid tag description"
+                                description = "The tag description must have a length between 1 and ${TagManager.DESCRIPTION_MAX_LENGTH} characters."
+
+                                field("Still want to create your tag?") {
+                                    buildString {
+                                        appendLine("**Name:** $tagName")
+                                        appendLine()
+                                        appendLine("**Content:**")
+                                        appendLine("```")
+                                        appendLine(tagContent)
+                                        appendLine("```")
+                                    }
+                                }
+                            }
+                        }
+
+                        return
+                    }
+
                     if (tagContent == null) {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Invalid tag content"
                                 description = "The tag content cannot be empty."
+                            }
+                        }
+
+                        return
+                    }
+
+                    if (tagContent.length > TagManager.CONTENT_MAX_LENGTH) {
+                        if (tagContent.length < 4000) {
+                            response.respond {
+                                stateEmbed(EmbedState.ERROR) {
+                                    title = "Invalid tag content"
+                                    description = "The tag content must have a length between 1 and ${TagManager.CONTENT_MAX_LENGTH} characters."
+
+                                    field("Still want to create your tag?") {
+                                        buildString {
+                                            appendLine("**Description:** $tagDescription")
+                                            appendLine()
+                                            appendLine("**Content:**")
+                                            appendLine("```")
+                                            appendLine(tagContent)
+                                            appendLine("```")
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -1193,10 +1291,13 @@ object TagCommandHandler {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Invalid tag name"
-                                description = "The tag name must be alphanumeric and have a length between ${TagManager.TAG_NAME_MIN_LENGTH} and ${TagManager.TAG_NAME_MAX_LENGTH} characters."
+                                description = "The tag name must be alphanumeric and have a length between 1 and ${TagManager.NAME_MAX_LENGTH} characters."
 
                                 field("Still want to create your tag?") {
                                     buildString {
+                                        appendLine("**Description:** $tagDescription")
+                                        appendLine()
+                                        appendLine("**Content:**")
                                         appendLine("```")
                                         appendLine(tagContent)
                                         appendLine("```")
@@ -1216,6 +1317,9 @@ object TagCommandHandler {
 
                                 field("Still want to create your tag?") {
                                     buildString {
+                                        appendLine("**Description:** $tagDescription")
+                                        appendLine()
+                                        appendLine("**Content:**")
                                         appendLine("```")
                                         appendLine(tagContent)
                                         appendLine("```")
@@ -1252,11 +1356,55 @@ object TagCommandHandler {
                     val (tagName, tagCopyableString) = event.interaction.modalId.substringAfter('_').split('_')
                     val tagDescription = event.interaction.textInputs["description"]?.value
                     val tagContent = event.interaction.textInputs["content"]?.value
+                    if (tagDescription != null && tagDescription.length > TagManager.DESCRIPTION_MAX_LENGTH) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid tag description"
+                                description = "The tag description must have a length between 1 and ${TagManager.DESCRIPTION_MAX_LENGTH} characters."
+
+                                field("Still want to edit your tag?") {
+                                    buildString {
+                                        appendLine("**Content:**")
+                                        appendLine("```")
+                                        appendLine(tagContent)
+                                        appendLine("```")
+                                    }
+                                }
+                            }
+                        }
+
+                        return
+                    }
+
                     if (tagContent == null) {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Invalid tag content"
                                 description = "The tag content cannot be empty."
+                            }
+                        }
+
+                        return
+                    }
+
+                    if (tagContent.length > TagManager.CONTENT_MAX_LENGTH) {
+                        if (tagContent.length < 4000) {
+                            response.respond {
+                                stateEmbed(EmbedState.ERROR) {
+                                    title = "Invalid tag content"
+                                    description = "The tag content must have a length between 1 and ${TagManager.CONTENT_MAX_LENGTH} characters."
+
+                                    field("Still want to edit your tag?") {
+                                        buildString {
+                                            appendLine("**Description:** $tagDescription")
+                                            appendLine()
+                                            appendLine("**Content:**")
+                                            appendLine("```")
+                                            appendLine(tagContent)
+                                            appendLine("```")
+                                        }
+                                    }
+                                }
                             }
                         }
 
