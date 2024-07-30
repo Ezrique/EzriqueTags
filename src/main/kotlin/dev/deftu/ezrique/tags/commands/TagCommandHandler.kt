@@ -1,8 +1,12 @@
 package dev.deftu.ezrique.tags.commands
 
+import com.google.gson.JsonArray
+import com.google.gson.JsonParser
 import dev.deftu.ezrique.*
 import dev.deftu.ezrique.tags.TagsErrorCode
 import dev.deftu.ezrique.tags.data.TagManager
+import dev.deftu.ezrique.tags.sql.TagEntity
+import dev.deftu.ezrique.tags.sql.TagTable
 import dev.kord.common.entity.Permission
 import dev.kord.common.entity.Permissions
 import dev.kord.common.entity.Snowflake
@@ -22,7 +26,7 @@ import kotlinx.coroutines.flow.firstOrNull
 object TagCommandHandler {
 
     private const val COMMAND_NAME = "tag"
-    private val TAG_NAME_AUTO_COMPLETE_COMMANDS = setOf("edit", "delete", "copy", "move", "info", "trigger")
+    private val TAG_NAME_AUTO_COMPLETE_COMMANDS = setOf("edit", "export", "delete", "copy", "move", "info", "trigger")
 
     fun setupGlobalCommands(builder: GlobalMultiApplicationCommandBuilder) {
         builder.input(COMMAND_NAME, "Manage tags for your server.") {
@@ -33,7 +37,7 @@ object TagCommandHandler {
 
             subCommand("create", "Create a tag.") {
                 boolean("copyable", "Whether the tag should be copyable.") {
-                    required = false
+                    required = true
                 }
             }
 
@@ -44,7 +48,28 @@ object TagCommandHandler {
                 }
 
                 boolean("copyable", "Whether the tag should be copyable.") {
-                    required = false
+                    required = true
+                }
+            }
+
+            subCommand("export", "Exports a tag as JSON.") {
+                string("name", "The name of the tag.") {
+                    required = true
+                    autocomplete = true
+                }
+            }
+
+            subCommand("exportall", "Exports all tags as JSON.")
+
+            subCommand("import", "Imports a tag from JSON.") {
+                string("json", "The JSON to import.") {
+                    required = true
+                }
+            }
+
+            subCommand("importbulk", "Imports all tags from the provided JSON.") {
+                string("json", "The JSON to import.") {
+                    required = true
                 }
             }
 
@@ -127,10 +152,14 @@ object TagCommandHandler {
                 try {
                     val tags = TagManager.listFor(guild.id)
                     response.respond {
-                        stateEmbed(EmbedState.SUCCESS) {
+                        stateEmbed(if (tags.isNotEmpty()) EmbedState.SUCCESS else EmbedState.ERROR) {
                             title = "Tags"
-                            description = tags.joinToString("\n") { tag ->
-                                "`${tag.name}` - ${TagManager.getDescriptionFor(tag, tag.name)}"
+                            description = if (tags.isNotEmpty()) {
+                                tags.joinToString("\n") { tag ->
+                                    "`${tag.name}` - ${TagManager.getDescriptionFor(tag, tag.name)}"
+                                }
+                            } else {
+                                "No tags found."
                             }
                         }
                     }
@@ -141,7 +170,7 @@ object TagCommandHandler {
 
             "create" -> {
                 try {
-                    val copyable = event.interaction.command.options["copyable"]?.value?.toString()?.toBoolean() ?: false
+                    val copyable = event.interaction.command.options["copyable"]?.value?.toString()?.toBoolean() ?: TagTable.COPYABLE_DEFAULT
                     event.interaction.modal("Tag Creator", "tag-creator_$copyable") {
                         actionRow {
                             textInput(TextInputStyle.Short, "name", "Name") {
@@ -169,7 +198,7 @@ object TagCommandHandler {
             "edit" -> {
                 try {
                     val name = event.interaction.command.options["name"]?.value?.toString() ?: return
-                    val copyable = event.interaction.command.options["copyable"]?.value?.toString()?.toBoolean() ?: false
+                    val copyable = event.interaction.command.options["copyable"]?.value?.toString()?.toBoolean() ?: TagTable.COPYABLE_DEFAULT
                     val tag = TagManager.getFor(guild.id, name) ?: return
                     event.interaction.modal("Tag Editor", "tag-editor_${name}_${copyable}") {
                         actionRow {
@@ -188,6 +217,243 @@ object TagCommandHandler {
                     }
                 } catch (t: Throwable) {
                     handleError(t, TagsErrorCode.TAG_EDIT, event.interaction.deferEphemeralResponse())
+                }
+            }
+
+            "export" -> {
+                val response = event.interaction.deferEphemeralResponse()
+
+                try {
+                    val name = event.interaction.command.options["name"]?.value?.toString()
+                    if (name == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid tag name"
+                                description = "The tag name cannot be empty."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val tag = TagManager.getFor(guild.id, name)
+                    if (tag == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Tag not found"
+                                description = "The tag `$name` does not exist."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val json = TagManager.convertToJson(tag)
+
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tag Export"
+                            description = "Here is the JSON for the tag `$name`."
+
+                            field("JSON") {
+                                buildString {
+                                    appendLine("```json")
+                                    appendLine(json.toString())
+                                    appendLine("```")
+                                }
+                            }
+                        }
+                    }
+                } catch (t: Throwable) {
+                    handleError(t, TagsErrorCode.TAG_EXPORT, response)
+                }
+            }
+
+            "exportall" -> {
+                val response = event.interaction.deferEphemeralResponse()
+
+                try {
+                    val tags = TagManager.listFor(guild.id)
+                    if (tags.isEmpty()) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "No tags found"
+                                description = "There are no tags to export."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val array = JsonArray()
+                    for (tag in tags) {
+                        array.add(TagManager.convertToJson(tag))
+                    }
+
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tags Export"
+                            description = "Here is the JSON for all tags."
+
+                            field("JSON") {
+                                buildString {
+                                    appendLine("```json")
+                                    appendLine(array.toString())
+                                    appendLine("```")
+                                }
+                            }
+                        }
+                    }
+                } catch (t: Throwable) {
+                    handleError(t, TagsErrorCode.TAG_EXPORTALL, response)
+                }
+            }
+
+            "import" -> {
+                val response = event.interaction.deferEphemeralResponse()
+
+                try {
+                    val jsonRaw = event.interaction.command.options["json"]?.value?.toString()
+                    if (jsonRaw == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid JSON"
+                                description = "The JSON cannot be empty."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val json = JsonParser.parseString(jsonRaw)?.asJsonObject
+                    if (json == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid JSON"
+                                description = "The JSON is invalid."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val tagName = TagManager.getTagNameFromJson(json)
+                    if (TagManager.existsFor(guild.id, tagName)) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Tag already exists"
+                                description = "A tag with the name `$tagName` already exists."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val tag = TagManager.createFromJson(guild.id, json)
+                    if (tag == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid JSON"
+                                description = "The JSON is invalid."
+                            }
+                        }
+
+                        return
+                    }
+
+                    event.kord.createGuildChatInputCommand(
+                        guild.id,
+                        tag.name,
+                        TagManager.getDescriptionFor(tag, tag.name)
+                    )
+
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tag imported"
+                            description = "The tag `${tag.name}` has been imported."
+                        }
+                    }
+                } catch (t: Throwable) {
+                    handleError(t, TagsErrorCode.TAG_IMPORT, response)
+                }
+            }
+
+            "importbulk" -> {
+                val response = event.interaction.deferEphemeralResponse()
+
+                try {
+                    val jsonRaw = event.interaction.command.options["json"]?.value?.toString()
+                    if (jsonRaw == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid JSON"
+                                description = "The JSON cannot be empty."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val json = JsonParser.parseString(jsonRaw)?.asJsonArray
+                    if (json == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid JSON"
+                                description = "The JSON is invalid."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val tags = mutableListOf<TagEntity>()
+                    val existingTags = mutableSetOf<String>()
+                    val invalidTags = mutableSetOf<String>()
+                    for (element in json) {
+                        val tagJson = element.asJsonObject
+                        val tagName = TagManager.getTagNameFromJson(tagJson)
+                        if (TagManager.existsFor(guild.id, tagName)) {
+                            existingTags.add(tagName)
+                            continue
+                        }
+
+                        val tag = TagManager.createFromJson(guild.id, tagJson)
+                        if (tag == null) {
+                            invalidTags.add(tagName)
+                            continue
+                        }
+
+                        tags.add(tag)
+                    }
+
+                    for (tag in tags) {
+                        event.kord.createGuildChatInputCommand(
+                            guild.id,
+                            tag.name,
+                            TagManager.getDescriptionFor(tag, tag.name)
+                        )
+                    }
+
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tags imported"
+                            description = "All tags have been imported."
+
+                            if (existingTags.isNotEmpty()) {
+                                field("Existing tags") {
+                                    existingTags.joinToString("\n") { tagName -> "`$tagName`" }
+                                }
+                            }
+
+                            if (invalidTags.isNotEmpty()) {
+                                field("Invalid tags") {
+                                    invalidTags.joinToString("\n") { tagName -> "`$tagName`" }
+                                }
+                            }
+                        }
+                    }
+                } catch (t: Throwable) {
+                    handleError(t, TagsErrorCode.TAG_IMPORTBULK, response)
                 }
             }
 
@@ -244,6 +510,11 @@ object TagCommandHandler {
                     }
 
                     TagManager.clearFor(guild.id)
+
+                    event.kord.getGuildApplicationCommands(guild.id).collect { command ->
+                        command.delete()
+                    }
+
                     response.respond {
                         stateEmbed(EmbedState.SUCCESS) {
                             title = "Tags cleared"
@@ -407,10 +678,12 @@ object TagCommandHandler {
                     }
 
                     val tags = TagManager.listFor(guild.id)
+                    val existingTags = mutableSetOf<String>()
                     val uncopyableTags = mutableSetOf<String>()
                     val failedTags = mutableSetOf<String>()
                     for (tag in tags) {
                         if (TagManager.existsFor(targetGuild.id, tag.name)) {
+                            existingTags.add(tag.name)
                             continue
                         }
 
@@ -435,19 +708,23 @@ object TagCommandHandler {
                     response.respond {
                         stateEmbed(EmbedState.SUCCESS) {
                             title = "Tags copied"
-                            description = buildString {
-                                appendLine("All tags have been copied to \"${targetGuild.name}\" ($targetGuildId)")
+                            description = "All tags have been copied to \"${targetGuild.name}\" ($targetGuildId)"
 
-                                if (uncopyableTags.isNotEmpty()) {
-                                    appendLine()
-                                    appendLine("Uncopyable tags:")
-                                    appendLine(uncopyableTags.joinToString("\n") { tagName -> "`$tagName`" })
+                            if (existingTags.isNotEmpty()) {
+                                field("Existing tags") {
+                                    existingTags.joinToString("\n") { tagName -> "`$tagName`" }
                                 }
+                            }
 
-                                if (failedTags.isNotEmpty()) {
-                                    appendLine()
-                                    appendLine("Failed tags:")
-                                    appendLine(failedTags.joinToString("\n") { tagName -> "`$tagName`" })
+                            if (uncopyableTags.isNotEmpty()) {
+                                field("Uncopyable tags") {
+                                    uncopyableTags.joinToString("\n") { tagName -> "`$tagName`" }
+                                }
+                            }
+
+                            if (failedTags.isNotEmpty()) {
+                                field("Failed tags") {
+                                    failedTags.joinToString("\n") { tagName -> "`$tagName`" }
                                 }
                             }
                         }
@@ -613,10 +890,12 @@ object TagCommandHandler {
                     }
 
                     val tags = TagManager.listFor(guild.id)
+                    val existingTags = mutableSetOf<String>()
                     val uncopyableTags = mutableSetOf<String>()
                     val failedTags = mutableSetOf<String>()
                     for (tag in tags) {
                         if (TagManager.existsFor(targetGuild.id, tag.name)) {
+                            existingTags.add(tag.name)
                             continue
                         }
 
@@ -645,19 +924,23 @@ object TagCommandHandler {
                     response.respond {
                         stateEmbed(EmbedState.SUCCESS) {
                             title = "Tags moved"
-                            description = buildString {
-                                appendLine("All tags have been moved to \"${targetGuild.name}\" ($targetGuildId)")
+                            description = "All tags have been moved to \"${targetGuild.name}\" ($targetGuildId)"
 
-                                if (uncopyableTags.isNotEmpty()) {
-                                    appendLine()
-                                    appendLine("Uncopyable tags:")
-                                    appendLine(uncopyableTags.joinToString("\n") { tagName -> "`$tagName`" })
+                            if (existingTags.isNotEmpty()) {
+                                field("Existing tags") {
+                                    existingTags.joinToString("\n") { tagName -> "`$tagName`" }
                                 }
+                            }
 
-                                if (failedTags.isNotEmpty()) {
-                                    appendLine()
-                                    appendLine("Failed tags:")
-                                    appendLine(failedTags.joinToString("\n") { tagName -> "`$tagName`" })
+                            if (uncopyableTags.isNotEmpty()) {
+                                field("Uncopyable tags") {
+                                    uncopyableTags.joinToString("\n") { tagName -> "`$tagName`" }
+                                }
+                            }
+
+                            if (failedTags.isNotEmpty()) {
+                                field("Failed tags") {
+                                    failedTags.joinToString("\n") { tagName -> "`$tagName`" }
                                 }
                             }
                         }

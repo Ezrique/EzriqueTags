@@ -24,6 +24,10 @@ enum class TagsErrorCode(override val code: Int) : ErrorCode {
     TAG_MANUAL_TRIGGER(15),
     TAG_CREATE_SUBMIT(16),
     TAG_EDIT_SUBMIT(17),
-    TAG_TRIGGER(18);
+    TAG_TRIGGER(18),
+    TAG_EXPORT(19),
+    TAG_EXPORTALL(20),
+    TAG_IMPORT(21),
+    TAG_IMPORTBULK(22);
 
 }

@@ -1,5 +1,6 @@
 package dev.deftu.ezrique.tags.data
 
+import com.google.gson.JsonObject
 import dev.deftu.ezrique.rawValue
 import dev.deftu.ezrique.tags.sql.TagEntity
 import dev.deftu.ezrique.tags.sql.TagTable
@@ -68,6 +69,55 @@ object TagManager {
             getDefaultDescriptionFor(tagName)
         } else {
             description
+        }
+    }
+
+    /**
+     * Convert a tag entity to JSON.
+     *
+     * @param tag The tag entity.
+     * @return The JSON object.
+     *
+     * @since 0.1.0
+     * @author Deftu
+     */
+    fun convertToJson(tag: TagEntity): JsonObject {
+        return JsonObject().apply {
+            addProperty("name", tag.name)
+            addProperty("description", tag.description)
+            addProperty("copyable", tag.copyable)
+            addProperty("content", tag.content)
+        }
+    }
+
+    fun getTagNameFromJson(json: JsonObject): String {
+        return json.get("name")?.asString ?: ""
+    }
+
+    /**
+     * Create a tag from JSON.
+     *
+     * @param json The JSON object.
+     * @return The tag entity.
+     *
+     * @since 0.1.0
+     * @author Deftu
+     */
+    suspend fun createFromJson(id: Snowflake, json: JsonObject): TagEntity? {
+        val guildId = id.rawValue
+        val name = json.get("name")?.asString ?: return null
+        val description = json.get("description")?.asString
+        val copyable = json.get("copyable")?.asBoolean
+        val content = json.get("content")?.asString ?: return null
+
+        return newSuspendedTransaction {
+            TagEntity.new {
+                this.guildId = guildId
+                this.name = name
+                this.description = description ?: getDefaultDescriptionFor(name)
+                this.copyable = copyable ?: TagTable.COPYABLE_DEFAULT
+                this.content = content
+            }
         }
     }
 
