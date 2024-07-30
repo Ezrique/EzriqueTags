@@ -18,8 +18,8 @@ Basic bot made for storing and sending messages via easy-to-remember, configurab
 - `/tag edit <copyable>`: Edit an existing tag.
 - `/tag export <name>`: Export a tag in JSON format.
 - `/tag exportall`: Export all tags in JSON format.
-- `/tag import <json>`: Import a tag from JSON format.
-- `/tag importbulk <json>`: Import multiple tags from JSON format.
+- `/tag import <json> <overwrite>`: Import a tag from JSON format. Optionally allows you to overwrite an existing tag.
+- `/tag importbulk <json> <overwrite>`: Import multiple tags from JSON format. Optionally allows you to overwrite existing tags.
 - `/tag delete <name>`: Delete a tag.
 - `/tag clear`: Delete all tags.
 - `/tag copy <name> <guild>`: Copy a tag **to** another server using it's server ID.
@@ -32,7 +32,7 @@ Basic bot made for storing and sending messages via easy-to-remember, configurab
 
 ## Permissions
 
-All of the commands under `/tag` require the Manage Server permission at least. The exceptions are,
+All the commands under `/tag` require the Manage Server permission at least. The exceptions are,
 
 - `/tag trigger` which requires no extra permissions. (though it's not visible to users without the Manage Server permission by default)
 - `/tag clear` which requires the Administrator permission.
