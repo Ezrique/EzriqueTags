@@ -1,7 +1,9 @@
 package dev.deftu.ezrique.tags.commands
 
 import dev.deftu.ezrique.EmbedState
+import dev.deftu.ezrique.handleError
 import dev.deftu.ezrique.stateEmbed
+import dev.deftu.ezrique.tags.TagsErrorCode
 import dev.deftu.ezrique.tags.data.TagManager
 import dev.kord.common.entity.Snowflake
 import dev.kord.core.Kord
@@ -25,22 +27,27 @@ object TagTriggerCommandHandler {
     }
 
     suspend fun handleCommand(event: GuildChatInputCommandInteractionCreateEvent, commandName: String, subCommandName: String?) {
-        val guild = event.interaction.getGuild()
-
         val response = event.interaction.deferPublicResponse()
-        if (!TagManager.existsFor(guild.id, commandName)) {
-            response.respond {
-                stateEmbed(EmbedState.ERROR) {
-                    description = "A tag with the name `$commandName` doesn't exist."
+
+        try {
+            val guild = event.interaction.getGuild()
+
+            if (!TagManager.existsFor(guild.id, commandName)) {
+                response.respond {
+                    stateEmbed(EmbedState.ERROR) {
+                        description = "A tag with the name `$commandName` doesn't exist."
+                    }
                 }
+
+                return
             }
 
-            return
-        }
-
-        val tag = TagManager.getFor(guild.id, commandName) ?: return
-        response.respond {
-            content = tag.content
+            val tag = TagManager.getFor(guild.id, commandName) ?: return
+            response.respond {
+                content = tag.content
+            }
+        } catch (t: Throwable) {
+            handleError(t, TagsErrorCode.TAG_TRIGGER, response)
         }
     }
 
