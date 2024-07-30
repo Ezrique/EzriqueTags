@@ -113,7 +113,7 @@ object TagManager {
      * @param id The guild ID.
      * @param name The tag name.
      * @param description The tag description.
-     * @param copyable If the tag is syncable.
+     * @param copyable If the tag is copyable.
      * @param content The tag content.
      *
      * @throws IllegalArgumentException If the tag name is invalid.
@@ -147,12 +147,12 @@ object TagManager {
     /**
      * Edit a tag.
      *
-     * This function only allows the description, syncability, and content to be edited.
+     * This function only allows the description, copyability, and content to be edited.
      *
      * @param id The guild ID.
      * @param name The tag name.
      * @param description The tag description.
-     * @param copyable If the tag is syncable.
+     * @param copyable If the tag is copyable.
      * @param content The tag content.
      *
      * @since 0.1.0
@@ -194,6 +194,20 @@ object TagManager {
     }
 
     /**
+     * Clear all tags for a guild.
+     *
+     * @param id The guild ID.
+     *
+     * @since 0.1.0
+     * @author Deftu
+     */
+    suspend fun clearFor(id: Snowflake) {
+        newSuspendedTransaction {
+            TagEntity.find { TagTable.guildId eq id.rawValue }.forEach { tag -> tag.delete() }
+        }
+    }
+
+    /**
      * List tags for a guild.
      *
      * @param id The guild ID.
@@ -220,9 +234,14 @@ object TagManager {
      */
     suspend fun copyTo(id: Snowflake, name: String, target: Snowflake): TagEntity? {
         return newSuspendedTransaction {
-            TagEntity.find {
+            val tag = TagEntity.find {
                 (TagTable.guildId eq id.rawValue) and (TagTable.name ilike name)
-            }.firstOrNull()?.let { tag ->
+            }.firstOrNull()
+            if (tag?.copyable == false) {
+                return@newSuspendedTransaction null
+            }
+
+            tag?.let {
                 TagEntity.new {
                     this.guildId = target.rawValue
                     this.name = tag.name
@@ -246,11 +265,15 @@ object TagManager {
      */
     suspend fun moveTo(id: Snowflake, name: String, target: Snowflake): TagEntity? {
         return newSuspendedTransaction {
-            TagEntity.find {
+            val tag = TagEntity.find {
                 (TagTable.guildId eq id.rawValue) and (TagTable.name ilike name)
-            }.firstOrNull()?.apply {
-                this.guildId = target.rawValue
+            }.firstOrNull()
+            if (tag?.copyable == false) {
+                return@newSuspendedTransaction null
             }
+
+            tag?.guildId = target.rawValue
+            tag
         }
     }
 
@@ -265,6 +288,24 @@ object TagManager {
     suspend fun listAll(): List<TagEntity> {
         return newSuspendedTransaction {
             TagEntity.all().toList()
+        }
+    }
+
+    /**
+     * Check if a tag is copyable.
+     *
+     * @param id The guild ID.
+     * @param name The tag name, not case-sensitive.
+     * @return True if the tag is copyable, false otherwise.
+     *
+     * @since 0.1.0
+     * @author Deftu
+     */
+    suspend fun isCopyable(id: Snowflake, name: String): Boolean {
+        return newSuspendedTransaction {
+            TagEntity.find {
+                (TagTable.guildId eq id.rawValue) and (TagTable.name ilike name)
+            }.firstOrNull()?.copyable ?: TagTable.COPYABLE_DEFAULT
         }
     }
 

@@ -15,12 +15,15 @@ enum class TagsErrorCode(override val code: Int) : ErrorCode {
     TAG_CREATE(6),
     TAG_EDIT(7),
     TAG_DELETE(8),
-    TAG_COPY(9),
-    TAG_MOVE(10),
-    TAG_INFO(11),
-    TAG_MANUAL_TRIGGER(12),
-    TAG_CREATE_SUBMIT(13),
-    TAG_EDIT_SUBMIT(14),
-    TAG_TRIGGER(15);
+    TAG_CLEAR(9),
+    TAG_COPY(10),
+    TAG_COPYALL(11),
+    TAG_MOVE(12),
+    TAG_MOVEALL(13),
+    TAG_INFO(14),
+    TAG_MANUAL_TRIGGER(15),
+    TAG_CREATE_SUBMIT(16),
+    TAG_EDIT_SUBMIT(17),
+    TAG_TRIGGER(18);
 
 }

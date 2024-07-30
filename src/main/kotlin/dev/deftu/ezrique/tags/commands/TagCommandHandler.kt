@@ -3,13 +3,11 @@ package dev.deftu.ezrique.tags.commands
 import dev.deftu.ezrique.*
 import dev.deftu.ezrique.tags.TagsErrorCode
 import dev.deftu.ezrique.tags.data.TagManager
-import dev.deftu.ezrique.tags.sql.TagTable
 import dev.kord.common.entity.Permission
 import dev.kord.common.entity.Permissions
 import dev.kord.common.entity.Snowflake
 import dev.kord.common.entity.TextInputStyle
 import dev.kord.core.behavior.interaction.modal
-import dev.kord.core.behavior.interaction.respondEphemeral
 import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.behavior.interaction.suggestString
 import dev.kord.core.event.interaction.GuildAutoCompleteInteractionCreateEvent
@@ -33,7 +31,7 @@ object TagCommandHandler {
             subCommand("list", "List all tags.")
 
             subCommand("create", "Create a tag.") {
-                boolean("syncable", "Whether the tag should be syncable.") {
+                boolean("copyable", "Whether the tag should be copyable.") {
                     required = false
                 }
             }
@@ -44,7 +42,7 @@ object TagCommandHandler {
                     autocomplete = true
                 }
 
-                boolean("syncable", "Whether the tag should be syncable.") {
+                boolean("copyable", "Whether the tag should be copyable.") {
                     required = false
                 }
             }
@@ -55,6 +53,8 @@ object TagCommandHandler {
                     autocomplete = true
                 }
             }
+
+            subCommand("clear", "Clear all tags.")
 
             subCommand("copy", "Copy a tag.") {
                 string("name", "The name of the tag.") {
@@ -67,6 +67,12 @@ object TagCommandHandler {
                 }
             }
 
+            subCommand("copyall", "Copy all tags.") {
+                string("guild", "The guild ID to copy the tags to.") {
+                    required = true
+                }
+            }
+
             subCommand("move", "Move a tag.") {
                 string("name", "The name of the tag.") {
                     required = true
@@ -74,6 +80,12 @@ object TagCommandHandler {
                 }
 
                 string("guild", "The guild ID to move the tag to.") {
+                    required = true
+                }
+            }
+
+            subCommand("moveall", "Move all tags.") {
+                string("guild", "The guild ID to move the tags to.") {
                     required = true
                 }
             }
@@ -128,8 +140,8 @@ object TagCommandHandler {
 
             "create" -> {
                 try {
-                    val syncable = event.interaction.command.options["syncable"]?.value?.toString()?.toBoolean() ?: false
-                    event.interaction.modal("Tag Creator", "tag-creator_$syncable") {
+                    val copyable = event.interaction.command.options["copyable"]?.value?.toString()?.toBoolean() ?: false
+                    event.interaction.modal("Tag Creator", "tag-creator_$copyable") {
                         actionRow {
                             textInput(TextInputStyle.Short, "name", "Name") {
                                 required = true
@@ -156,9 +168,9 @@ object TagCommandHandler {
             "edit" -> {
                 try {
                     val name = event.interaction.command.options["name"]?.value?.toString() ?: return
-                    val syncable = event.interaction.command.options["syncable"]?.value?.toString()?.toBoolean() ?: false
+                    val copyable = event.interaction.command.options["copyable"]?.value?.toString()?.toBoolean() ?: false
                     val tag = TagManager.getFor(guild.id, name) ?: return
-                    event.interaction.modal("Tag Editor", "tag-editor_${name}_${syncable}") {
+                    event.interaction.modal("Tag Editor", "tag-editor_${name}_${copyable}") {
                         actionRow {
                             textInput(TextInputStyle.Short, "description", "Description") {
                                 required = false
@@ -214,6 +226,26 @@ object TagCommandHandler {
                     }
                 } catch (t: Throwable) {
                     handleError(t, TagsErrorCode.TAG_DELETE, response)
+                }
+            }
+
+            "clear" -> {
+                val response = event.interaction.deferEphemeralResponse()
+
+                try {
+                    if (!member.checkPermissionDeferred(Permission.Administrator, response)) {
+                        return
+                    }
+
+                    TagManager.clearFor(guild.id)
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tags cleared"
+                            description = "All tags have been cleared."
+                        }
+                    }
+                } catch (t: Throwable) {
+                    handleError(t, TagsErrorCode.TAG_CLEAR, response)
                 }
             }
 
@@ -290,6 +322,17 @@ object TagCommandHandler {
                         return
                     }
 
+                    if (!TagManager.isCopyable(guild.id, name)) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Tag not copyable"
+                                description = "The tag `$name` is not copyable."
+                            }
+                        }
+
+                        return
+                    }
+
                     val tag = TagManager.copyTo(guild.id, name, targetGuild.id)
                     if (tag == null) {
                         response.respond {
@@ -316,6 +359,95 @@ object TagCommandHandler {
                     }
                 } catch (t: Throwable) {
                     handleError(t, TagsErrorCode.TAG_COPY, response)
+                }
+            }
+
+            "copyall" -> {
+                val response = event.interaction.deferEphemeralResponse()
+
+                try {
+                    val targetGuildId = event.interaction.command.options["guild"]?.value?.toString()?.toLongOrNull()
+                    if (targetGuildId == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid guild ID"
+                                description = "The guild ID must be a valid Snowflake."
+                            }
+                        }
+
+                        return
+                    }
+
+                    if (!member.checkPermissionDeferred(Permission.Administrator, response)) {
+                        return
+                    }
+
+                    val targetGuild = event.kord.getGuildOrNull(Snowflake(targetGuildId))
+                    if (targetGuild == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Guild not found"
+                                description = "A guild with the ID `$targetGuildId` cannot be found."
+                            }
+                        }
+
+                        return
+                    }
+
+                    if (!event.interaction.user.asMember(targetGuild.id)
+                            .checkPermissionDeferred(Permission.Administrator, response)
+                    ) {
+                        return
+                    }
+
+                    val tags = TagManager.listFor(guild.id)
+                    val uncopyableTags = mutableSetOf<String>()
+                    val failedTags = mutableSetOf<String>()
+                    for (tag in tags) {
+                        if (TagManager.existsFor(targetGuild.id, tag.name)) {
+                            continue
+                        }
+
+                        if (!TagManager.isCopyable(guild.id, tag.name)) {
+                            uncopyableTags.add(tag.name)
+                            continue
+                        }
+
+                        val newTag = TagManager.copyTo(guild.id, tag.name, targetGuild.id)
+                        if (newTag == null) {
+                            failedTags.add(tag.name)
+                            continue
+                        }
+
+                        event.kord.createGuildChatInputCommand(
+                            targetGuild.id,
+                            tag.name,
+                            TagManager.getDescriptionFor(newTag, tag.name)
+                        )
+                    }
+
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tags copied"
+                            description = buildString {
+                                appendLine("All tags have been copied to \"${targetGuild.name}\" ($targetGuildId)")
+
+                                if (uncopyableTags.isNotEmpty()) {
+                                    appendLine()
+                                    appendLine("Uncopyable tags:")
+                                    appendLine(uncopyableTags.joinToString("\n") { tagName -> "`$tagName`" })
+                                }
+
+                                if (failedTags.isNotEmpty()) {
+                                    appendLine()
+                                    appendLine("Failed tags:")
+                                    appendLine(failedTags.joinToString("\n") { tagName -> "`$tagName`" })
+                                }
+                            }
+                        }
+                    }
+                } catch (t: Throwable) {
+                    handleError(t, TagsErrorCode.TAG_COPYALL, response)
                 }
             }
 
@@ -392,6 +524,17 @@ object TagCommandHandler {
                         return
                     }
 
+                    if (!TagManager.isCopyable(guild.id, name)) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Tag not copyable"
+                                description = "The tag `$name` is not copyable."
+                            }
+                        }
+
+                        return
+                    }
+
                     val tag = TagManager.moveTo(guild.id, name, targetGuild.id)
                     if (tag == null) {
                         response.respond {
@@ -418,6 +561,95 @@ object TagCommandHandler {
                     }
                 } catch (t: Throwable) {
                     handleError(t, TagsErrorCode.TAG_MOVE, response)
+                }
+            }
+
+            "moveall" -> {
+                val response = event.interaction.deferEphemeralResponse()
+
+                try {
+                    val targetGuildId = event.interaction.command.options["guild"]?.value?.toString()?.toLongOrNull()
+                    if (targetGuildId == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid guild ID"
+                                description = "The guild ID must be a valid Snowflake."
+                            }
+                        }
+
+                        return
+                    }
+
+                    if (!member.checkPermissionDeferred(Permission.Administrator, response)) {
+                        return
+                    }
+
+                    val targetGuild = event.kord.getGuildOrNull(Snowflake(targetGuildId))
+                    if (targetGuild == null) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Guild not found"
+                                description = "A guild with the ID `$targetGuildId` cannot be found."
+                            }
+                        }
+
+                        return
+                    }
+
+                    if (!event.interaction.user.asMember(targetGuild.id)
+                            .checkPermissionDeferred(Permission.Administrator, response)
+                    ) {
+                        return
+                    }
+
+                    val tags = TagManager.listFor(guild.id)
+                    val uncopyableTags = mutableSetOf<String>()
+                    val failedTags = mutableSetOf<String>()
+                    for (tag in tags) {
+                        if (TagManager.existsFor(targetGuild.id, tag.name)) {
+                            continue
+                        }
+
+                        if (!TagManager.isCopyable(guild.id, tag.name)) {
+                            uncopyableTags.add(tag.name)
+                            continue
+                        }
+
+                        val newTag = TagManager.moveTo(guild.id, tag.name, targetGuild.id)
+                        if (newTag == null) {
+                            failedTags.add(tag.name)
+                            continue
+                        }
+
+                        event.kord.createGuildChatInputCommand(
+                            targetGuild.id,
+                            tag.name,
+                            TagManager.getDescriptionFor(newTag, tag.name)
+                        )
+                    }
+
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tags moved"
+                            description = buildString {
+                                appendLine("All tags have been moved to \"${targetGuild.name}\" ($targetGuildId)")
+
+                                if (uncopyableTags.isNotEmpty()) {
+                                    appendLine()
+                                    appendLine("Uncopyable tags:")
+                                    appendLine(uncopyableTags.joinToString("\n") { tagName -> "`$tagName`" })
+                                }
+
+                                if (failedTags.isNotEmpty()) {
+                                    appendLine()
+                                    appendLine("Failed tags:")
+                                    appendLine(failedTags.joinToString("\n") { tagName -> "`$tagName`" })
+                                }
+                            }
+                        }
+                    }
+                } catch (t: Throwable) {
+                    handleError(t, TagsErrorCode.TAG_MOVEALL, response)
                 }
             }
 
@@ -464,7 +696,7 @@ object TagCommandHandler {
                             }
 
                             field {
-                                this.name = "Syncable"
+                                this.name = "Copyable"
                                 this.value = if (tag.copyable) "Yes" else "No"
                             }
 
@@ -572,7 +804,7 @@ object TagCommandHandler {
                         return
                     }
 
-                    val tagSyncable = event.interaction.modalId.substringAfter('_').toBooleanStrictOrNull()
+                    val tagCopyable = event.interaction.modalId.substringAfter('_').toBooleanStrictOrNull()
 
                     val guild = event.interaction.getGuild()
                     if (!TagManager.validateName(tagName)) {
@@ -613,7 +845,7 @@ object TagCommandHandler {
                         return
                     }
 
-                    val tag = TagManager.createFor(guild.id, tagName, tagDescription, tagSyncable, tagContent)
+                    val tag = TagManager.createFor(guild.id, tagName, tagDescription, tagCopyable, tagContent)
                     event.kord.createGuildChatInputCommand(
                         guild.id,
                         tagName,
@@ -635,7 +867,7 @@ object TagCommandHandler {
                 val response = event.interaction.deferEphemeralResponse()
 
                 try {
-                    val (tagName, tagSyncableString) = event.interaction.modalId.substringAfter('_').split('_')
+                    val (tagName, tagCopyableString) = event.interaction.modalId.substringAfter('_').split('_')
                     val tagDescription = event.interaction.textInputs["description"]?.value
                     val tagContent = event.interaction.textInputs["content"]?.value
                     if (tagContent == null) {
@@ -649,7 +881,7 @@ object TagCommandHandler {
                         return
                     }
 
-                    val tagSyncable = tagSyncableString.toBooleanStrictOrNull()
+                    val tagCopyable = tagCopyableString.toBooleanStrictOrNull()
 
                     val guild = event.interaction.getGuild()
                     if (!TagManager.existsFor(guild.id, tagName)) {
@@ -671,7 +903,7 @@ object TagCommandHandler {
                         return
                     }
 
-                    TagManager.editFor(guild.id, tagName, tagDescription, tagSyncable, tagContent)
+                    TagManager.editFor(guild.id, tagName, tagDescription, tagCopyable, tagContent)
 
                     response.respond {
                         stateEmbed(EmbedState.SUCCESS) {
