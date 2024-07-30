@@ -20,8 +20,24 @@ object TagTriggerCommandHandler {
         for ((guildId, guildTags) in tags.groupBy { entity ->
             entity.guildId
         }) {
+            val snowflake = Snowflake(guildId)
+
+            /**
+             * Remove old tags that are no longer in the database.
+             */
+            kord.getGuildApplicationCommands(snowflake).collect { command ->
+                if (command.name in guildTags.map { tag -> tag.name }) {
+                    return@collect
+                }
+
+                command.delete()
+            }
+
+            /**
+             * Ensure all tags are available as slash commands in their associated guild.
+             */
             for (guildTag in guildTags) {
-                kord.createGuildChatInputCommand(Snowflake(guildId), guildTag.name, TagManager.getDescriptionFor(guildTag, guildTag.name))
+                kord.createGuildChatInputCommand(snowflake, guildTag.name, TagManager.getDescriptionFor(guildTag, guildTag.name))
             }
         }
     }

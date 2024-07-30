@@ -17,6 +17,7 @@ import dev.kord.rest.builder.interaction.GlobalMultiApplicationCommandBuilder
 import dev.kord.rest.builder.interaction.boolean
 import dev.kord.rest.builder.interaction.string
 import dev.kord.rest.builder.interaction.subCommand
+import kotlinx.coroutines.flow.firstOrNull
 
 object TagCommandHandler {
 
@@ -218,6 +219,11 @@ object TagCommandHandler {
                     }
 
                     TagManager.deleteFor(guild.id, name)
+
+                    event.kord.getGuildApplicationCommands(guild.id).firstOrNull { command ->
+                        command.name == name
+                    }?.delete()
+
                     response.respond {
                         stateEmbed(EmbedState.SUCCESS) {
                             title = "Tag deleted"
@@ -547,6 +553,10 @@ object TagCommandHandler {
                         return
                     }
 
+                    event.kord.getGuildApplicationCommands(guild.id).firstOrNull { command ->
+                        command.name == name
+                    }?.delete()
+
                     event.kord.createGuildChatInputCommand(
                         targetGuild.id,
                         name,
@@ -620,6 +630,10 @@ object TagCommandHandler {
                             failedTags.add(tag.name)
                             continue
                         }
+
+                        event.kord.getGuildApplicationCommands(guild.id).firstOrNull { command ->
+                            command.name == tag.name
+                        }?.delete()
 
                         event.kord.createGuildChatInputCommand(
                             targetGuild.id,
