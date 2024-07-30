@@ -1100,7 +1100,7 @@ object TagCommandHandler {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Invalid tag name"
-                                description = "The tag name must be alphanumeric and have a length between 3 and 32 characters."
+                                description = "The tag name must be alphanumeric and have a length between ${TagManager.TAG_NAME_MIN_LENGTH} and ${TagManager.TAG_NAME_MAX_LENGTH} characters."
                             }
                         }
 
@@ -1128,7 +1128,7 @@ object TagCommandHandler {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Invalid tag name"
-                                description = "The tag name must be alphanumeric and have a length between 3 and 32 characters."
+                                description = "The tag name must be alphanumeric and have a length between ${TagManager.TAG_NAME_MIN_LENGTH} and ${TagManager.TAG_NAME_MAX_LENGTH} characters."
 
                                 field("Still want to create your tag?") {
                                     buildString {

@@ -11,7 +11,9 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 
 object TagManager {
 
-    private val TAG_NAME_REGEX = Regex("^[a-z0-9-]{3,32}$")
+    const val TAG_NAME_MIN_LENGTH = 2
+    const val TAG_NAME_MAX_LENGTH = 32
+    private val TAG_NAME_REGEX = Regex("^[a-z0-9-]{${TAG_NAME_MAX_LENGTH},${TAG_NAME_MAX_LENGTH}}$")
     private val RESERVED_NAMES = arrayOf("tag")
 
     /**
