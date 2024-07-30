@@ -65,11 +65,19 @@ object TagCommandHandler {
                 string("json", "The JSON to import.") {
                     required = true
                 }
+
+                boolean("overwrite", "Whether to overwrite the tag if it already exists.") {
+                    required = false
+                }
             }
 
             subCommand("importbulk", "Imports all tags from the provided JSON.") {
                 string("json", "The JSON to import.") {
                     required = true
+                }
+
+                boolean("overwrite", "Whether to overwrite the tags if they already exist.") {
+                    required = false
                 }
             }
 
@@ -325,6 +333,8 @@ object TagCommandHandler {
                         return
                     }
 
+                    val overwrite = event.interaction.command.options["overwrite"]?.value?.toString()?.toBoolean() ?: false
+
                     val json = JsonParser.parseString(jsonRaw)?.asJsonObject
                     if (json == null) {
                         response.respond {
@@ -338,7 +348,7 @@ object TagCommandHandler {
                     }
 
                     val tagName = TagManager.getTagNameFromJson(json)
-                    if (TagManager.existsFor(guild.id, tagName)) {
+                    if (!overwrite && TagManager.existsFor(guild.id, tagName)) {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Tag already exists"
@@ -347,6 +357,10 @@ object TagCommandHandler {
                         }
 
                         return
+                    }
+
+                    if (overwrite) {
+                        TagManager.deleteFor(guild.id, tagName)
                     }
 
                     val tag = TagManager.createFromJson(guild.id, json)
@@ -394,6 +408,8 @@ object TagCommandHandler {
                         return
                     }
 
+                    val overwrite = event.interaction.command.options["overwrite"]?.value?.toString()?.toBoolean() ?: false
+
                     val json = JsonParser.parseString(jsonRaw)?.asJsonArray
                     if (json == null) {
                         response.respond {
@@ -412,9 +428,13 @@ object TagCommandHandler {
                     for (element in json) {
                         val tagJson = element.asJsonObject
                         val tagName = TagManager.getTagNameFromJson(tagJson)
-                        if (TagManager.existsFor(guild.id, tagName)) {
+                        if (!overwrite && TagManager.existsFor(guild.id, tagName)) {
                             existingTags.add(tagName)
                             continue
+                        }
+
+                        if (overwrite) {
+                            TagManager.deleteFor(guild.id, tagName)
                         }
 
                         val tag = TagManager.createFromJson(guild.id, tagJson)
