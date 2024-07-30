@@ -12,8 +12,11 @@ import dev.kord.common.entity.Permissions
 import dev.kord.common.entity.Snowflake
 import dev.kord.common.entity.TextInputStyle
 import dev.kord.core.behavior.interaction.modal
+import dev.kord.core.behavior.interaction.response.DeferredMessageInteractionResponseBehavior
+import dev.kord.core.behavior.interaction.response.InteractionResponseBehavior
 import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.behavior.interaction.suggestString
+import dev.kord.core.entity.Guild
 import dev.kord.core.event.interaction.GuildAutoCompleteInteractionCreateEvent
 import dev.kord.core.event.interaction.GuildChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.GuildModalSubmitInteractionCreateEvent
@@ -335,6 +338,10 @@ object TagCommandHandler {
 
                     val overwrite = event.interaction.command.options["overwrite"]?.value?.toString()?.toBoolean() ?: false
 
+                    if (!checkTagLimit(guild, response)) {
+                        return
+                    }
+
                     val json = JsonParser.parseString(jsonRaw)?.asJsonObject
                     if (json == null) {
                         response.respond {
@@ -410,6 +417,10 @@ object TagCommandHandler {
 
                     val overwrite = event.interaction.command.options["overwrite"]?.value?.toString()?.toBoolean() ?: false
 
+                    if (!checkTagLimit(guild, response)) {
+                        return
+                    }
+
                     val json = JsonParser.parseString(jsonRaw)?.asJsonArray
                     if (json == null) {
                         response.respond {
@@ -424,12 +435,18 @@ object TagCommandHandler {
 
                     val tags = mutableListOf<TagEntity>()
                     val existingTags = mutableSetOf<String>()
+                    val overLimitTags = mutableListOf<String>()
                     val invalidTags = mutableSetOf<String>()
                     for (element in json) {
                         val tagJson = element.asJsonObject
                         val tagName = TagManager.getTagNameFromJson(tagJson)
                         if (!overwrite && TagManager.existsFor(guild.id, tagName)) {
                             existingTags.add(tagName)
+                            continue
+                        }
+
+                        if (TagManager.isOverLimit(guild.id)) {
+                            overLimitTags.add(tagName)
                             continue
                         }
 
@@ -462,6 +479,12 @@ object TagCommandHandler {
                             if (existingTags.isNotEmpty()) {
                                 field("Existing tags") {
                                     existingTags.joinToString("\n") { tagName -> "`$tagName`" }
+                                }
+                            }
+
+                            if (overLimitTags.isNotEmpty()) {
+                                field("Over limit tags") {
+                                    overLimitTags.joinToString("\n") { tagName -> "`$tagName`" }
                                 }
                             }
 
@@ -601,6 +624,10 @@ object TagCommandHandler {
                         return
                     }
 
+                    if (!checkTagLimit(targetGuild, response)) {
+                        return
+                    }
+
                     if (!event.interaction.user.asMember(targetGuild.id)
                             .checkPermissionDeferred(Permission.Administrator, response)
                     ) {
@@ -691,6 +718,10 @@ object TagCommandHandler {
                         return
                     }
 
+                    if (!checkTagLimit(targetGuild, response)) {
+                        return
+                    }
+
                     if (!event.interaction.user.asMember(targetGuild.id)
                             .checkPermissionDeferred(Permission.Administrator, response)
                     ) {
@@ -699,11 +730,17 @@ object TagCommandHandler {
 
                     val tags = TagManager.listFor(guild.id)
                     val existingTags = mutableSetOf<String>()
+                    val overLimitTags = mutableListOf<String>()
                     val uncopyableTags = mutableSetOf<String>()
                     val failedTags = mutableSetOf<String>()
                     for (tag in tags) {
                         if (TagManager.existsFor(targetGuild.id, tag.name)) {
                             existingTags.add(tag.name)
+                            continue
+                        }
+
+                        if (TagManager.isOverLimit(targetGuild.id)) {
+                            overLimitTags.add(tag.name)
                             continue
                         }
 
@@ -733,6 +770,12 @@ object TagCommandHandler {
                             if (existingTags.isNotEmpty()) {
                                 field("Existing tags") {
                                     existingTags.joinToString("\n") { tagName -> "`$tagName`" }
+                                }
+                            }
+
+                            if (overLimitTags.isNotEmpty()) {
+                                field("Over limit tags") {
+                                    overLimitTags.joinToString("\n") { tagName -> "`$tagName`" }
                                 }
                             }
 
@@ -806,6 +849,10 @@ object TagCommandHandler {
                             }
                         }
 
+                        return
+                    }
+
+                    if (!checkTagLimit(targetGuild, response)) {
                         return
                     }
 
@@ -891,6 +938,8 @@ object TagCommandHandler {
                         return
                     }
 
+
+
                     val targetGuild = event.kord.getGuildOrNull(Snowflake(targetGuildId))
                     if (targetGuild == null) {
                         response.respond {
@@ -903,6 +952,10 @@ object TagCommandHandler {
                         return
                     }
 
+                    if (!checkTagLimit(targetGuild, response)) {
+                        return
+                    }
+
                     if (!event.interaction.user.asMember(targetGuild.id)
                             .checkPermissionDeferred(Permission.Administrator, response)
                     ) {
@@ -911,11 +964,17 @@ object TagCommandHandler {
 
                     val tags = TagManager.listFor(guild.id)
                     val existingTags = mutableSetOf<String>()
+                    val overLimitTags = mutableListOf<String>()
                     val uncopyableTags = mutableSetOf<String>()
                     val failedTags = mutableSetOf<String>()
                     for (tag in tags) {
                         if (TagManager.existsFor(targetGuild.id, tag.name)) {
                             existingTags.add(tag.name)
+                            continue
+                        }
+
+                        if (TagManager.isOverLimit(targetGuild.id)) {
+                            overLimitTags.add(tag.name)
                             continue
                         }
 
@@ -949,6 +1008,12 @@ object TagCommandHandler {
                             if (existingTags.isNotEmpty()) {
                                 field("Existing tags") {
                                     existingTags.joinToString("\n") { tagName -> "`$tagName`" }
+                                }
+                            }
+
+                            if (overLimitTags.isNotEmpty()) {
+                                field("Over limit tags") {
+                                    overLimitTags.joinToString("\n") { tagName -> "`$tagName`" }
                                 }
                             }
 
@@ -1233,6 +1298,21 @@ object TagCommandHandler {
                 }
             }
         }
+    }
+
+    private suspend fun checkTagLimit(guild: Guild, response: DeferredMessageInteractionResponseBehavior): Boolean {
+        if (TagManager.isOverLimit(guild.id)) {
+            response.respond {
+                stateEmbed(EmbedState.ERROR) {
+                    title = "Tag limit reached"
+                    description = "The tag limit of ${TagManager.MAX_TAGS_PER_GUILD} has been reached in ${guild.name} (${guild.id})."
+                }
+            }
+
+            return false
+        }
+
+        return true
     }
 
 }

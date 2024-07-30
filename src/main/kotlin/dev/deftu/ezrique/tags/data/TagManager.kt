@@ -11,9 +11,20 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 
 object TagManager {
 
-    const val TAG_NAME_MIN_LENGTH = 2
-    const val TAG_NAME_MAX_LENGTH = 32
-    private val TAG_NAME_REGEX = Regex("^[a-z0-9-]{${TAG_NAME_MAX_LENGTH},${TAG_NAME_MAX_LENGTH}}$")
+    const val MAX_TAGS_PER_GUILD = 50
+    const val TAG_NAME_MIN_LENGTH = 1
+    const val TAG_NAME_MAX_LENGTH = 25
+
+    private val tagNameRegex = Regex(buildString {
+        append("^")
+        append("[a-z0-9-]{")
+        append(TAG_NAME_MIN_LENGTH)
+        append(",")
+        append(TAG_NAME_MAX_LENGTH)
+        append("}")
+        append("$")
+    })
+
     private val RESERVED_NAMES = arrayOf("tag")
 
     /**
@@ -26,7 +37,7 @@ object TagManager {
      * @author Deftu
      */
     fun validateName(name: String): Boolean {
-        return name.matches(TAG_NAME_REGEX) && !RESERVED_NAMES.contains(name)
+        return name.matches(tagNameRegex) && !RESERVED_NAMES.contains(name)
     }
 
     /**
@@ -121,6 +132,18 @@ object TagManager {
                 this.content = content
             }
         }
+    }
+
+    /**
+     * Check if a guild has reached the tag limit.
+     *
+     * @param id The guild ID.
+     * @return True if the guild has reached the tag limit, false otherwise.
+     *
+     * @since 0.1.0
+     */
+    suspend fun isOverLimit(id: Snowflake): Boolean {
+        return countFor(id) >= MAX_TAGS_PER_GUILD
     }
 
     /**
@@ -271,6 +294,12 @@ object TagManager {
     suspend fun listFor(id: Snowflake): List<TagEntity> {
         return newSuspendedTransaction {
             TagEntity.find { TagTable.guildId eq id.rawValue }.toList()
+        }
+    }
+
+    suspend fun countFor(id: Snowflake): Long {
+        return newSuspendedTransaction {
+            TagEntity.find { TagTable.guildId eq id.rawValue }.count()
         }
     }
 
