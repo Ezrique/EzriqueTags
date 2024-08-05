@@ -19,14 +19,12 @@ import dev.kord.core.entity.Guild
 import dev.kord.core.event.interaction.GuildAutoCompleteInteractionCreateEvent
 import dev.kord.core.event.interaction.GuildChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.GuildModalSubmitInteractionCreateEvent
-import dev.kord.rest.builder.interaction.GlobalMultiApplicationCommandBuilder
-import dev.kord.rest.builder.interaction.boolean
-import dev.kord.rest.builder.interaction.string
-import dev.kord.rest.builder.interaction.subCommand
-import dev.kord.rest.builder.message.addFile
+import dev.kord.rest.builder.interaction.*
 import io.ktor.client.request.forms.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.flow.firstOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 object TagCommandHandler {
 
@@ -77,7 +75,7 @@ object TagCommandHandler {
             }
 
             subCommand("importbulk", "Imports all tags from the provided JSON.") {
-                string("json", "The JSON to import.") {
+                attachment("json", "The JSON to import.") {
                     required = true
                 }
 
@@ -309,41 +307,22 @@ object TagCommandHandler {
                     }
 
                     val jsonString = array.toString()
-                    if (jsonString.length < 1500) {
-                        response.respond {
-                            stateEmbed(EmbedState.SUCCESS) {
-                                title = "Tags Export"
-                                description = "Here is the JSON for all tags."
 
-                                field("JSON") {
-                                    buildString {
-                                        appendLine("```json")
-                                        appendLine(jsonString)
-                                        appendLine("```")
-                                    }
-                                }
+                    // Send a file
+                    val bytes = jsonString.toByteArray(Charsets.UTF_8)
+                    response.respond {
+                        stateEmbed(EmbedState.SUCCESS) {
+                            title = "Tags Export"
+                            description = "Here is the JSON for all tags."
+                            field("JSON") {
+                                "The JSON is too large to display here. Please download the file."
                             }
                         }
 
-                        return
-                    } else {
-                        // Send a file
-                        val bytes = jsonString.toByteArray(Charsets.UTF_8)
-                        response.respond {
-                            stateEmbed(EmbedState.SUCCESS) {
-                                title = "Tags Export"
-                                description = "Here is the JSON for all tags."
-
-                                field("JSON") {
-                                    "The JSON is too large to display here. Please download the file."
-                                }
-                            }
-
-                            addFile(
-                                "tags.json",
-                                ChannelProvider(bytes.size.toLong()) { ByteReadChannel(bytes) }
-                            )
-                        }
+                        addFile(
+                            "tags.json",
+                            ChannelProvider(bytes.size.toLong()) { ByteReadChannel(bytes) }
+                        )
                     }
                 } catch (t: Throwable) {
                     handleError(t, TagsErrorCode.TAG_EXPORTALL, response)
@@ -372,7 +351,12 @@ object TagCommandHandler {
                         return
                     }
 
-                    val json = JsonParser.parseString(jsonRaw)?.asJsonObject
+                    val json = try {
+                        JsonParser.parseString(jsonRaw)?.asJsonObject
+                    } catch (t: Throwable) {
+                        null
+                    }
+
                     if (json == null) {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
@@ -433,8 +417,8 @@ object TagCommandHandler {
                 val response = event.interaction.deferEphemeralResponse()
 
                 try {
-                    val jsonRaw = event.interaction.command.options["json"]?.value?.toString()
-                    if (jsonRaw == null) {
+                    val jsonFile = event.interaction.command.attachments["json"]
+                    if (jsonFile == null) {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
                                 title = "Invalid JSON"
@@ -445,13 +429,44 @@ object TagCommandHandler {
                         return
                     }
 
+                    if (jsonFile.contentType?.startsWith("application/json", ignoreCase = true) == false) {
+                        response.respond {
+                            stateEmbed(EmbedState.ERROR) {
+                                title = "Invalid JSON"
+                                description = "The JSON must be a valid JSON file."
+                            }
+                        }
+
+                        return
+                    }
+
+                    val jsonFileUrl = jsonFile.url
+
+                    val httpClient = OkHttpClient()
+                    val request = httpClient.newCall(
+                        Request.Builder()
+                            .url(jsonFileUrl)
+                            .get()
+                            .build()
+                    ).execute()
+                    val jsonFileContent = request.use { httpResponse ->
+                        httpResponse.body?.use { body ->
+                            body.string()
+                        }
+                    }
+
                     val overwrite = event.interaction.command.options["overwrite"]?.value?.toString()?.toBoolean() ?: false
 
                     if (!checkTagLimit(guild, response)) {
                         return
                     }
 
-                    val json = JsonParser.parseString(jsonRaw)?.asJsonArray
+                    val json = try {
+                        JsonParser.parseString(jsonFileContent)?.asJsonArray
+                    } catch (t: Throwable) {
+                        null
+                    }
+
                     if (json == null) {
                         response.respond {
                             stateEmbed(EmbedState.ERROR) {
