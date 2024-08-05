@@ -41,7 +41,7 @@ object TagTriggerCommandHandler {
                     kord.createGuildChatInputCommand(snowflake, guildTag.name, TagManager.getDescriptionFor(guildTag, guildTag.name))
                 }
             } catch (t: Throwable) {
-                handleError(t, null)
+                continue
             }
         }
     }
