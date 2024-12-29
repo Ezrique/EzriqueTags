@@ -15,7 +15,7 @@ import org.apache.logging.log4j.LogManager
 
 object TagTriggerCommandHandler {
 
-    private val logger = LogManager.getLogger()
+    private val logger = LogManager.getLogger(TagTriggerCommandHandler::class.java)
 
     suspend fun setupGuildCommands(kord: Kord) {
         val tags = TagManager.listAll()
