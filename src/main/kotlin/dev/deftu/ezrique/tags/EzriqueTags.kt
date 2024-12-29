@@ -73,8 +73,14 @@ object EzriqueTags {
             LOGGER.info("Starting $NAME v$VERSION")
 
             initializeSentry()
-            if (!initializeDatabase()) return@runBlocking
-            if (!initializeKord()) return@runBlocking
+
+            if (!initializeDatabase()) {
+                return@runBlocking
+            }
+
+            if (!initializeKord()) {
+                return@runBlocking
+            }
 
             setupHealthchecks()
             setupKordListeners()
@@ -84,7 +90,10 @@ object EzriqueTags {
                 CommandDelegator.setupGlobalCommands(this)
             }
 
-            CommandDelegator.setupGuildCommands(kord)
+            val guildCommandSetupScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            guildCommandSetupScope.launch {
+                CommandDelegator.setupGuildCommands(kord)
+            }
 
             try {
                 kord.login {

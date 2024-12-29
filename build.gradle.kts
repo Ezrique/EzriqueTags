@@ -3,10 +3,11 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 plugins {
     java
     kotlin("jvm") version("2.0.0")
-    val dgt = "2.5.0"
-    id("dev.deftu.gradle.tools") version(dgt)
-    id("dev.deftu.gradle.tools.bloom") version(dgt)
-    id("dev.deftu.gradle.tools.shadow") version(dgt)
+    val dgtVersion = "2.13.0"
+    id("dev.deftu.gradle.tools") version(dgtVersion)
+    id("dev.deftu.gradle.tools.bloom") version(dgtVersion)
+    id("dev.deftu.gradle.tools.shadow") version(dgtVersion)
+    id("dev.deftu.gradle.tools.resources") version(dgtVersion)
 }
 
 repositories {

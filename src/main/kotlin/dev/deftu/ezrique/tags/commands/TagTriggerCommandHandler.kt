@@ -11,8 +11,11 @@ import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.event.interaction.GuildAutoCompleteInteractionCreateEvent
 import dev.kord.core.event.interaction.GuildChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.ModalSubmitInteractionCreateEvent
+import org.apache.logging.log4j.LogManager
 
 object TagTriggerCommandHandler {
+
+    private val logger = LogManager.getLogger()
 
     suspend fun setupGuildCommands(kord: Kord) {
         val tags = TagManager.listAll()
@@ -22,6 +25,7 @@ object TagTriggerCommandHandler {
         }) {
             try {
                 val snowflake = Snowflake(guildId)
+                logger.info("Setting up ${guildTags.size} guild commands for guild $snowflake")
 
                 /**
                  * Remove old tags that are no longer in the database.
