@@ -51,6 +51,10 @@ object TagTriggerCommandHandler {
     }
 
     suspend fun handleCommand(event: GuildChatInputCommandInteractionCreateEvent, commandName: String, subCommandName: String?) {
+        if (commandName == TagCommandHandler.COMMAND_NAME) {
+            return
+        }
+
         val response = event.interaction.deferPublicResponse()
 
         try {

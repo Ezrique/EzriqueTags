@@ -28,7 +28,7 @@ import okhttp3.Request
 
 object TagCommandHandler {
 
-    private const val COMMAND_NAME = "tag"
+    const val COMMAND_NAME = "tag"
     private val TAG_NAME_AUTO_COMPLETE_COMMANDS = setOf("edit", "export", "delete", "copy", "move", "info", "trigger")
 
     fun setupGlobalCommands(builder: GlobalMultiApplicationCommandBuilder) {
