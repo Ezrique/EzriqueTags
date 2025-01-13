@@ -13,6 +13,12 @@ COPY build.gradle.kts $APP_HOME/
 COPY settings.gradle.kts $APP_HOME/
 COPY src $APP_HOME/src
 
+## Convert line endings of gradlew to LF
+RUN sed -i 's/\r$//' gradlew
+
+## Make gradlew executable
+RUN chmod +x gradlew
+
 ## Build the application
 RUN ./gradlew build
 
