@@ -1,2 +1,5 @@
 [versions]
-ezrique-core = "0.6.1"
+ezrique-core = "0.8.0"
+
+postgres = "42.7.1"
+exposed = "0.41.1"

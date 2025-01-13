@@ -3,9 +3,6 @@ package dev.deftu.ezrique.tags
 import dev.deftu.ezrique.*
 import dev.deftu.ezrique.tags.commands.CommandDelegator
 import dev.deftu.ezrique.tags.sql.TagTable
-import dev.deftu.ezrique.tags.utils.Healthchecks
-import dev.deftu.ezrique.tags.utils.scheduleAtFixedRate
-import dev.deftu.ezrique.tags.utils.isInDocker
 import dev.kord.common.entity.PresenceStatus
 import dev.kord.core.Kord
 import dev.kord.core.behavior.interaction.respondEphemeral
