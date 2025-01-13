@@ -265,19 +265,36 @@ object TagCommandHandler {
                     }
 
                     val json = TagManager.convertToJson(tag)
+                    val jsonString = json.toString()
 
                     response.respond {
-                        stateEmbed(EmbedState.SUCCESS) {
-                            title = "Tag Export"
-                            description = "Here is the JSON for the tag `$name`."
+                        if (jsonString.length <= 1000) {
+                            stateEmbed(EmbedState.SUCCESS) {
+                                title = "Tag Export"
+                                description = "Here is the JSON for the tag `$name`."
 
-                            field("JSON") {
-                                buildString {
-                                    appendLine("```json")
-                                    appendLine(json.toString())
-                                    appendLine("```")
+                                field("JSON") {
+                                    buildString {
+                                        appendLine("```json")
+                                        appendLine(json.toString())
+                                        appendLine("```")
+                                    }
                                 }
                             }
+                        } else {
+                            stateEmbed(EmbedState.SUCCESS) {
+                                title = "Tag Export"
+                                description = "Here is the JSON for the tag `$name`."
+
+                                field("JSON") {
+                                    "The JSON is too large to display here. Please download the file."
+                                }
+                            }
+
+                            addFile(
+                                "tag.json",
+                                ChannelProvider(jsonString.length.toLong()) { ByteReadChannel(jsonString.toByteArray(Charsets.UTF_8)) }
+                            )
                         }
                     }
                 } catch (t: Throwable) {
@@ -1185,7 +1202,7 @@ object TagCommandHandler {
             val guild = event.interaction.getGuild()
             val name = event.interaction.command.options["name"]?.value?.toString() ?: return
             val tags = TagManager.listFor(guild.id)
-            val filteredTags = tags.filter { tag -> tag.name.startsWith(name) }
+            val filteredTags = tags.filter { tag -> tag.name.startsWith(name) }.take(25)
             event.interaction.suggestString {
                 for (tag in filteredTags) {
                     choice(tag.name, tag.name)
