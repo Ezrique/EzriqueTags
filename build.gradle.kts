@@ -18,10 +18,10 @@ dependencies {
     shade(implementation("dev.deftu:ezrique-core:${libs.versions.ezrique.core.get()}")!!)
 
     // SQL
-    api("org.postgresql:postgresql:${libs.versions.postgres.get()}")
-    api("org.jetbrains.exposed:exposed-core:${libs.versions.exposed.get()}")
-    api("org.jetbrains.exposed:exposed-dao:${libs.versions.exposed.get()}")
-    api("org.jetbrains.exposed:exposed-jdbc:${libs.versions.exposed.get()}")
+    shade(api("org.postgresql:postgresql:${libs.versions.postgres.get()}")!!)
+    shade(api("org.jetbrains.exposed:exposed-core:${libs.versions.exposed.get()}")!!)
+    shade(api("org.jetbrains.exposed:exposed-dao:${libs.versions.exposed.get()}")!!)
+    shade(api("org.jetbrains.exposed:exposed-jdbc:${libs.versions.exposed.get()}")!!)
 }
 
 tasks {
