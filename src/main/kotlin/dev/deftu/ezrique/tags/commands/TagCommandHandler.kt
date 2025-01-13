@@ -151,6 +151,7 @@ object TagCommandHandler {
         val guild = event.interaction.getGuild()
         val member = event.interaction.user.asMember(guild.id)
         if (subCommandName != "trigger" && !member.checkPermissionDeferred(Permission.ManageGuild) {
+            println("Permission denied")
             event.interaction.deferPublicResponse()
         }) {
             return
